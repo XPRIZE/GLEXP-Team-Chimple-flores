@@ -10,21 +10,21 @@ import java.lang.reflect.Type;
 import java.util.Arrays;
 
 public class ProfileMessageDeserializer implements JsonDeserializer<ProfileMessage> {
-    @Override
+
     public ProfileMessage deserialize(final JsonElement json, final Type typeOfT, final JsonDeserializationContext context)
             throws JsonParseException {
 
         final JsonObject jsonObject = json.getAsJsonObject();
-        final JsonElement jsonMessageType = jsonObject.get("message_type");
+        final JsonElement jsonMessageType = jsonObject.get("mt");
         final String messageType = jsonMessageType.getAsString();
 
-        final JsonElement jsonDeviceType = jsonObject.get("device_id");
+        final JsonElement jsonDeviceType = jsonObject.get("d");
         final String deviceId = jsonDeviceType.getAsString();
 
-        final JsonElement jsonUserIdType = jsonObject.get("user_id");
+        final JsonElement jsonUserIdType = jsonObject.get("u");
         final String userId = jsonUserIdType.getAsString();
 
-        final JsonElement jsonDataType = jsonObject.get("data");
+        final JsonElement jsonDataType = jsonObject.get("d");
         final String data = jsonDataType.getAsString();
 
         final ProfileMessage profileMessage = new ProfileMessage(userId, deviceId, messageType, data);

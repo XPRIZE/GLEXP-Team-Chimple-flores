@@ -5,11 +5,7 @@ import android.arch.persistence.room.Insert;
 import android.arch.persistence.room.OnConflictStrategy;
 import android.arch.persistence.room.Query;
 
-import java.util.List;
-
-import org.chimple.flores.db.entity.P2PLatestInfoByUserAndDevice;
 import org.chimple.flores.db.entity.P2PSyncDeviceStatus;
-import org.chimple.flores.db.entity.P2PSyncInfo;
 
 @Dao
 public interface P2PSyncDeviceStatusDao {

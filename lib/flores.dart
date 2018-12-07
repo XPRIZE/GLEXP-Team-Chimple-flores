@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:uuid/uuid.dart';
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart' show visibleForTesting;
 
@@ -50,9 +50,21 @@ class Flores {
       .invokeMethod('connectTo')
       .then<bool>((dynamic result) => result);
 
-  Future<bool> start() async => _methodChannel
-      .invokeMethod('start')
-      .then<bool>((dynamic result) => result);
+  Future<bool> start() async {
+    var uuid = new Uuid();
+    String userId = uuid.v4();
+    String deviceId = userId + '-device';
+    String message = 'Profile-' + userId;
+    final Map<String, String> params = <String, String>{
+      'userId': userId,
+      'deviceId': deviceId,
+      'message': message
+    };
+
+    return _methodChannel
+        .invokeMethod('start', params)
+        .then<bool>((dynamic result) => result);
+  }      
 
   Future<bool> addUser(String userId, String deviceId, String message) async {
     final Map<String, String> params = <String, String>{
@@ -63,6 +75,16 @@ class Flores {
 
     return _methodChannel
         .invokeMethod('addUser', params)
+        .then<bool>((dynamic result) => result);
+  }
+
+Future<bool> addTextMessage(String message) async {
+    final Map<String, String> params = <String, String>{
+      'message': message
+    };
+
+    return _methodChannel
+        .invokeMethod('addTextMessage', params)
         .then<bool>((dynamic result) => result);
   }
 

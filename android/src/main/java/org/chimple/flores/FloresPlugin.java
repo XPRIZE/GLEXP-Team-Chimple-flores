@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
+import android.os.AsyncTask;
 import android.app.Activity;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -20,27 +20,26 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
 import io.flutter.plugin.common.PluginRegistry;
 
+import org.chimple.flores.application.P2PContext;
 import org.chimple.flores.db.DBSyncManager;
+import org.chimple.flores.manager.BluetoothManager;
+import org.chimple.flores.multicast.MulticastManager;
 import org.chimple.flores.db.entity.P2PSyncInfo;
 import org.chimple.flores.db.entity.P2PUserIdDeviceIdAndMessage;
 import org.chimple.flores.db.entity.P2PUserIdMessage;
-import org.chimple.flores.scheduler.JobUtils;
-
 /**
  * FloresPlugin
  */
 public class FloresPlugin implements MethodCallHandler, StreamHandler {
     private static final String TAG = FloresPlugin.class.getName();
     private static MethodChannel methodChannel;
+    private static boolean isAppLaunched = false;
+    
   /**
    * Plugin registration.
    */
   public static void registerWith(PluginRegistry.Registrar registrar) {
-      if (methodChannel != null) {
-          Log.i(TAG, "You should not call registerWith more than once.");
-      } else {
-        methodChannel = new MethodChannel(registrar.messenger(), "chimple.org/flores");      
-      }
+    methodChannel = new MethodChannel(registrar.messenger(), "chimple.org/flores");      
 
     final EventChannel eventChannel =
         new EventChannel(registrar.messenger(), "chimple.org/flores_event");
@@ -61,141 +60,196 @@ public class FloresPlugin implements MethodCallHandler, StreamHandler {
   }
 
   @Override
-  public void onMethodCall(MethodCall call, Result result) {
+  public void onMethodCall(final MethodCall call, final Result result) {
       switch (call.method) {
           case "getUsers":
           {
-              List<P2PUserIdDeviceIdAndMessage> udList = DBSyncManager.getInstance(registrar.context()).getUsers();
-              List<Map<String, String>> users = new ArrayList<Map<String, String>>();
-              Log.i(TAG, "getUsers: "+users);
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    List<P2PUserIdDeviceIdAndMessage> udList = DBSyncManager.getInstance(registrar.context()).getUsers();
+                    List<Map<String, String>> users = new ArrayList<Map<String, String>>();
+                    Log.i(TAG, "getUsers: "+users);
+      
+                    for (P2PUserIdDeviceIdAndMessage ud: udList
+                            ) {
+                        Map<String, String> user = new HashMap<String, String>();
+                        user.put("userId", ud.userId);
+                        user.put("deviceId", ud.deviceId);
+                        user.put("message", ud.message);
+                        users.add(user);
+                    }
+      
+                    if (users.size() >= 0) {
+                        result.success(users);
+                    } else {
+                        result.error("UNAVAILABLE", "Users are not available.", null);
+                    }                    
+                }
+            });
 
-              for (P2PUserIdDeviceIdAndMessage ud: udList
-                      ) {
-                  Map<String, String> user = new HashMap<String, String>();
-                  user.put("userId", ud.userId);
-                  user.put("deviceId", ud.deviceId);
-                  user.put("message", ud.message);
-                  users.add(user);
-              }
-
-              if (users.size() >= 0) {
-                  result.success(users);
-              } else {
-                  result.error("UNAVAILABLE", "Users are not available.", null);
-              }
+              
               break;
-          }
+          }          
           case "addUser":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String userId = arg.get("userId");
-              String deviceId = arg.get("deviceId");
-              String message = arg.get("message");
-              boolean status = DBSyncManager.getInstance(registrar.context()).upsertUser(userId, deviceId, message);
-            //   DBSyncManager.getInstance(registrar.context()).addMessage(userId, "r3" + userId, "Chat", "Good Day 🎮" + userId, true, "session 3" + userId);
-            //   DBSyncManager.getInstance(registrar.context()).addMessage(userId, "r4" + userId, "Chat", "🍤🍉" + userId, true, "session 4" + userId);
-
-            //   DBSyncManager.getInstance(registrar.context()).addMessage(userId, "r1" + userId, "Chat", "Hi" + userId, true, "session1" + userId);
-            //   DBSyncManager.getInstance(registrar.context()).addMessage(userId, "r1" + userId, "Chat", "😸" + userId, true, "session2" + userId);
-
-            //   DBSyncManager.getInstance(registrar.context()).loggedInUser(userId, deviceId);
-              result.success(status);
-              break;
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String userId = arg.get("userId");
+                    String deviceId = arg.get("deviceId");
+                    Log.i(TAG, "addUser with user id: "+userId+ " and device id:" + deviceId);
+                    String message = arg.get("message");
+                    boolean status = DBSyncManager.getInstance(registrar.context()).upsertUser(userId, deviceId, message);
+                    String bluetoothAddress = BluetoothManager.getInstance(registrar.context()).getBluetoothMacAddress();                    
+                    DBSyncManager.getInstance(registrar.context()).saveBtAddress(deviceId, bluetoothAddress);
+                    result.success(status);                    
+                }
+            });
+            break;
           }
           case "start":
-          {
-              JobUtils.scheduledJob(registrar.context().getApplicationContext(), true);
-              break;
+          {           
+            break;
           }
+          case "addTextMessage":{
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;            
+                    String userId = P2PContext.getInstance().getLoggedInUser();
+                    String recipientId = null;
+                    String messageType = "Chat";
+                    String message = arg.get("message");
+                    boolean retStatus =
+                    DBSyncManager.getInstance(registrar.context())
+                                    .addMessage(userId, recipientId, messageType, message);
+                    result.success(retStatus);                    
+                }
+            });
+            
+            break;              
+          }          
           case "addMessage":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String userId = arg.get("userId");
-              String recipientId = arg.get("recipientId");
-              String messageType = arg.get("messageType");
-              String message = arg.get("message");
-              String statusStr = arg.get("status");
-              Boolean status = Boolean.valueOf(statusStr);
-              String sessionId = arg.get("sessionId");
-              boolean retStatus =
-              DBSyncManager.getInstance(registrar.context())
-                              .addMessage(userId, recipientId, messageType, message, status, sessionId);
-              result.success(retStatus);
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String userId = arg.get("userId");
+                    String recipientId = arg.get("recipientId");
+                    String messageType = arg.get("messageType");
+                    String message = arg.get("message");
+                    String statusStr = arg.get("status");
+                    Boolean status = Boolean.valueOf(statusStr);
+                    String sessionId = arg.get("sessionId");
+                    boolean retStatus =
+                    DBSyncManager.getInstance(registrar.context())
+                                    .addMessage(userId, recipientId, messageType, message, status, sessionId);
+                    result.success(retStatus);                    
+                }
+            });
+              
               break;
           }
           case "getLatestMessages":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String messageType = arg.get("messageType");
-              String userId = arg.get("userId");
-              String secondUserId = arg.get("secondUserId");
-              List<String> userIds = new ArrayList<String>();
-              userIds.add(userId);
-              userIds.add(secondUserId);
-              List<P2PUserIdMessage> messageList =
-              DBSyncManager.getInstance(registrar.context())
-                              .fetchLatestMessagesByMessageType(messageType, userIds);
-              List<Map<String, String>> messages = new ArrayList<Map<String, String>>();
-              for (P2PUserIdMessage m: messageList
-                      ) {
-                  Map<String, String> message = new HashMap<String, String>();
-                  message.put("userId", m.userId);
-                  message.put("message", m.message);
-                  messages.add(message);
-              }
-
-              if (messages.size() >= 0) {
-                  result.success(messages);
-              } else {
-                  result.error("UNAVAILABLE", "Messages are not available.", null);
-              }
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String messageType = arg.get("messageType");
+                    String userId = arg.get("userId");
+                    String secondUserId = arg.get("secondUserId");
+                    List<String> userIds = new ArrayList<String>();
+                    userIds.add(userId);
+                    userIds.add(secondUserId);
+                    List<P2PUserIdMessage> messageList =
+                    DBSyncManager.getInstance(registrar.context())
+                                    .fetchLatestMessagesByMessageType(messageType, userIds);
+                    List<Map<String, String>> messages = new ArrayList<Map<String, String>>();
+                    for (P2PUserIdMessage m: messageList
+                            ) {
+                        Map<String, String> message = new HashMap<String, String>();
+                        message.put("userId", m.userId);
+                        message.put("message", m.message);
+                        messages.add(message);
+                    }
+      
+                    if (messages.size() >= 0) {
+                        result.success(messages);
+                    } else {
+                        result.error("UNAVAILABLE", "Messages are not available.", null);
+                    }
+                }
+            });
+              
               break;
           }
           case "getConversations":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String messageType = arg.get("messageType");
-              String userId = arg.get("userId");
-              String secondUserId = arg.get("secondUserId");
-              List<P2PSyncInfo> messageList =
-              DBSyncManager.getInstance(registrar.context())
-                              .getConversations(userId, secondUserId, messageType);
-              Log.i(TAG, "getConversations: "+messageType+userId+secondUserId);
-              List<Map<String, String>> messages = convertToListOfMaps(messageList);
-              Log.i(TAG, messages.toString());
-              if (messages.size() >= 0) {
-                  result.success(messages);
-              } else {
-                  result.error("UNAVAILABLE", "Messages are not available.", null);
-              }
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String messageType = arg.get("messageType");
+                    String userId = arg.get("userId");
+                    String secondUserId = arg.get("secondUserId");
+                    List<P2PSyncInfo> messageList =
+                    DBSyncManager.getInstance(registrar.context())
+                                    .getConversations(userId, secondUserId, messageType);
+                    Log.i(TAG, "getConversations: "+messageType+userId+secondUserId);
+                    List<Map<String, String>> messages = convertToListOfMaps(messageList);
+                    Log.i(TAG, messages.toString());
+                    if (messages.size() >= 0) {
+                        result.success(messages);
+                    } else {
+                        result.error("UNAVAILABLE", "Messages are not available.", null);
+                    }
+                }
+            });
+              
               break;
           }
           case "getLatestConversations":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String messageType = arg.get("messageType");
-              String userId = arg.get("userId");
-              List<P2PSyncInfo> messageList =
-              DBSyncManager.getInstance(registrar.context())
-                              .getLatestConversations(userId, messageType);
-              List<Map<String, String>> messages = convertToListOfMaps(messageList);
-
-              if (messages.size() >= 0) {
-                  result.success(messages);
-              } else {
-                  result.error("UNAVAILABLE", "Messages are not available.", null);
-              }
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String messageType = arg.get("messageType");
+                    String userId = arg.get("userId");
+                    List<P2PSyncInfo> messageList =
+                    DBSyncManager.getInstance(registrar.context())
+                                    .getLatestConversations(userId, messageType);
+                    List<Map<String, String>> messages = convertToListOfMaps(messageList);
+      
+                    if (messages.size() >= 0) {
+                        result.success(messages);
+                    } else {
+                        result.error("UNAVAILABLE", "Messages are not available.", null);
+                    }
+                }
+            });
+              
               break;
           }
           case "loggedInUser":
           {
-              Map<String, String> arg = (Map<String, String>)call.arguments;
-              String userId = arg.get("userId");
-              String deviceId = arg.get("deviceId");
-              boolean status = DBSyncManager.getInstance(registrar.context())
-                              .loggedInUser(userId, deviceId);
-
-              result.success(status);
+            AsyncTask.execute(new Runnable() {
+                @Override
+                public void run() {
+                    Map<String, String> arg = (Map<String, String>)call.arguments;
+                    String userId = arg.get("userId");
+                    String deviceId = arg.get("deviceId");
+                    boolean status = DBSyncManager.getInstance(registrar.context())
+                                    .loggedInUser(userId, deviceId);
+                    MulticastManager.getInstance(registrar.context()).sendFindBuddyMessage();
+                    result.success(status);
+                }
+            });
+              
               break;
 
           }
@@ -275,5 +329,14 @@ public class FloresPlugin implements MethodCallHandler, StreamHandler {
             methodChannel.invokeMethod("messageReceived", message);
             finish();
         }
+    }
+
+
+    public static void launchApp() {
+        FloresPlugin.isAppLaunched = true;
+    }
+
+    public static boolean isAppLunched() {
+        return FloresPlugin.isAppLaunched;
     }
 }

@@ -25,7 +25,7 @@ android {
     compileSdkVersion 27
 
     defaultConfig {
-        minSdkVersion 23
+        minSdkVersion 21
         targetSdkVersion 27
         versionCode 1
         versionName "1.0"
@@ -47,7 +47,9 @@ dependencies {
     implementation 'com.android.support:appcompat-v7:27.1.1'
     implementation 'com.android.support.constraint:constraint-layout:1.0.2'
     implementation 'commons-beanutils:commons-beanutils:1.8.3'
+    implementation 'commons-io:commons-io:2.6'
     implementation 'org.apache.commons:commons-collections4:4.1'
+    implementation 'com.google.guava:guava:26.0-android'
     implementation 'com.google.code.gson:gson:2.8.0'
     implementation "android.arch.persistence.room:runtime:1.0.0"
     implementation "org.apache.commons:commons-lang3:3.7"

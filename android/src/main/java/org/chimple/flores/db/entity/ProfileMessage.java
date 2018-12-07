@@ -6,20 +6,20 @@ import com.google.gson.annotations.SerializedName;
 
 public class ProfileMessage {
     @Expose(serialize = true, deserialize = true)
-    @SerializedName("user_id")
+    @SerializedName("u")
     String userId;
 
     @Expose(serialize = true, deserialize = true)
-    @SerializedName("device_id")
+    @SerializedName("d")
     String deviceId;
 
 
     @Expose(serialize = true, deserialize = true)
-    @SerializedName("message_type")
+    @SerializedName("mt")
     String messageType;
 
     @Expose(serialize = true, deserialize = true)
-    @SerializedName("data")
+    @SerializedName("d")
     String data;
 
     public ProfileMessage(String userId, String deviceId, String messageType, String data) {
@@ -29,7 +29,7 @@ public class ProfileMessage {
         this.deviceId = deviceId;
     }
 
-    @Override
+
     public boolean equals(final Object obj) {
         if (obj == null) {
             return false;
@@ -42,7 +42,7 @@ public class ProfileMessage {
         }
     }
 
-    @Override
+
     public int hashCode() {
         int hashno = 7;
         hashno = 13 * hashno + (messageType == null ? 0 : messageType.hashCode()) + (data == null ? 0 : data.hashCode() + (userId == null ? 0 : userId.hashCode()) + (deviceId == null ? 0 : deviceId.hashCode()));

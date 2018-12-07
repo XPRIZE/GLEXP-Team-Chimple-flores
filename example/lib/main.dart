@@ -1,9 +1,22 @@
 import 'dart:async';
+import 'package:flores_example/app_state_container.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flores/flores.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
-void main() => runApp(new MaterialApp(home: new MyApp()));
+
+void main() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String deviceId = prefs.getString('deviceId');
+  if (deviceId == null) {
+    deviceId = Uuid().v4();
+    prefs.setString('deviceId', deviceId);
+  }
+
+  runApp(AppStateContainer(deviceId: deviceId, child: MyApp()));
+}
 
 class MyApp extends StatefulWidget {
   @override
@@ -11,175 +24,242 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
-      new GlobalKey<RefreshIndicatorState>();
-  final GlobalKey<ScaffoldState> _scaffoldKey = new GlobalKey<ScaffoldState>();
-  Flores _flores = new Flores();
-  List<dynamic> _neighbors = [];
-  final TextEditingController _textController = new TextEditingController();
-  bool _isComposing = false;
-
   @override
   initState() {
     super.initState();
-    initPlatformState();
-  }
-
-  // Platform messages are asynchronous, so we initialize in an async method.
-  initPlatformState() async {
-    List<dynamic> neighbors;
-    // Platform messages may fail, so we use a try/catch PlatformException.
-    try {
-      neighbors = await _flores.users;
-    } on PlatformException {
-      print('Failed getting neighbors');
-    }
-    print('users: $neighbors');
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
-    if (!mounted) return;
-
-    setState(() {
-      _neighbors = neighbors;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      AppStateContainer.of(context).getUsers();
     });
-  }
-
-  Future<Null> _handleRefresh() {
-    initPlatformState();
-    final Completer<Null> completer = new Completer<Null>();
-    new Timer(const Duration(seconds: 3), () {
-      completer.complete(null);
-    });
-    return completer.future.then((_) {
-      _scaffoldKey.currentState?.showSnackBar(new SnackBar(
-          content: const Text('Refresh complete'),
-          action: new SnackBarAction(
-              label: 'RETRY',
-              onPressed: () {
-                _refreshIndicatorKey.currentState.show();
-              })));
-    });
-  }
-
-  _handleTextInput(String text) {
-    _textController.clear();
-    setState(() {
-      _isComposing = false;
-    });
-    _flores.addUser(text, 'b','hi');
   }
 
   @override
   Widget build(BuildContext context) {
-    return new MaterialApp(
-      home: new Scaffold(
-        key: _scaffoldKey,
-        appBar: new AppBar(
-          title: new Text('Flores example app'),
-          actions: <Widget>[
-            new IconButton(
-              icon: new Icon(Icons.star),
-              tooltip: 'Start',
-              onPressed: () {
-                _flores.start();
-              },
-            )
-          ],
-        ),
-        body: new Column(
-          children: <Widget>[
-            new Row(
-              children: <Widget>[
-                new Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    onChanged: (String text) {
-                      setState(() {
-                        _isComposing = text.length > 0;
-                      });
-                    },
-                  ),
-                ),
-                new IconButton(
-                  icon: new Icon(Icons.send),
-                  onPressed: _isComposing
-                      ? () => _handleTextInput(_textController.text)
-                      : null,
-                )
-              ],
-            ),
-            new Expanded(
-              child: new RefreshIndicator(
-                key: _refreshIndicatorKey,
-                onRefresh: _handleRefresh,
-                child: new ListView.builder(
-                    itemBuilder: (BuildContext context, int index) =>
-                        new RaisedButton(
-                            onPressed: () {
+    return new MaterialApp(home: UserScreen());
+  }
+}
+
+class UserScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: new AppBar(
+        title: new Text('Login'),
+      ),
+      body: Column(
+        children: <Widget>[
+          Flexible(
+            child: ListView(
+                children: AppStateContainer.of(context)
+                    .users
+                    .where((u) =>
+                        u['deviceId'] == AppStateContainer.of(context).deviceId)
+                    .map((u) => Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: RaisedButton(
+                            onPressed: () async {
+                              await AppStateContainer.of(context)
+                                  .setLoggedInUser(u['userId'], u['message']);
+                              await AppStateContainer.of(context).getUsers();
                               Navigator.of(context).push(
-                                  new MaterialPageRoute<Null>(
-                                      builder: (BuildContext context) {
-                                return new ConnectPage(
-                                    _neighbors[index]['userId']);
-                              }));
+                                  MaterialPageRoute<Null>(
+                                      builder: (BuildContext context) =>
+                                          FriendScreen()));
                             },
-                            child: new Text(_neighbors[index]['userId'])),
-                    itemCount: _neighbors?.length ?? 0),
-              ),
-            ),
-          ],
-        ),
+                            child: Text(u['message']),
+                          ),
+                        ))
+                    .toList(growable: false)),
+          ),
+          TextField(
+              onSubmitted: (text) async {
+                String userId =
+                    await AppStateContainer.of(context).addUser(text);
+                await AppStateContainer.of(context)
+                    .setLoggedInUser(userId, text);
+                await AppStateContainer.of(context).getUsers();
+                Navigator.of(context).push(MaterialPageRoute<Null>(
+                    builder: (BuildContext context) => FriendScreen()));
+              },
+              decoration: new InputDecoration.collapsed(hintText: 'Add User'))
+        ],
       ),
     );
   }
 }
 
-class ConnectPage extends StatefulWidget {
-  final String neighbor;
-
-  ConnectPage(this.neighbor);
-
+class FriendScreen extends StatelessWidget {
   @override
-  ConnectPageState createState() {
-    return new ConnectPageState();
+  Widget build(BuildContext context) {
+    String userId = AppStateContainer.of(context).loggedInUserId;
+    final users = AppStateContainer.of(context).users;
+    print('FriendScreen userId: $userId users: $users');
+    return Scaffold(
+      appBar: new AppBar(
+        title: new Text(
+            'User: ${AppStateContainer.of(context).loggedInUserName} chat with...'),
+      ),
+      body: ListView(
+          children: AppStateContainer.of(context)
+              .users
+              .where((u) => (u['userId'] != null && u['userId'] != userId))
+              .map((u) => Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: RaisedButton(
+                      onPressed: () async {
+                        await AppStateContainer.of(context)
+                            .getMessages(u['userId']);
+                        Navigator.of(context).push(MaterialPageRoute<Null>(
+                            builder: (BuildContext context) => ChatScreen(
+                                  friendId: u['userId'],
+                                  friendName: u['message'],
+                                )));
+                      },
+                      child: Text(u['message'] ?? ''),
+                    ),
+                  ))
+              .toList(growable: false)),
+    );
   }
 }
 
-class ConnectPageState extends State<ConnectPage> {
-  Flores _flores = new Flores();
-  bool _connectionStatus;
+class ChatScreen extends StatelessWidget {
+  final String friendId;
+  final String friendName;
+
+  const ChatScreen({Key key, this.friendId, this.friendName}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final messages = AppStateContainer.of(context).messages;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+            'User: ${AppStateContainer.of(context).loggedInUserName} chat with $friendName'),
+      ),
+      body: Column(
+        children: <Widget>[
+          Flexible(
+              child: ListView.builder(
+                  itemCount: messages.length,
+                  reverse: true,
+                  itemBuilder: (context, index) {
+                    String msg = messages[index]['message'];
+                    msg = msg.startsWith('!@!@!@!@')
+                        ? 'Big message (${msg.length})'
+                        : msg;
+                    print('msg: $msg');
+                    return (messages[index]['userId'] == friendId)
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: <Widget>[
+                                Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: CircleAvatar(
+                                      child: Text(friendName),
+                                    )),
+                                Flexible(child: Text(msg))
+                              ])
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: <Widget>[
+                                Flexible(child: Text(msg)),
+                                Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: CircleAvatar(
+                                      child: Text(AppStateContainer.of(context)
+                                          .loggedInUserName),
+                                    )),
+                              ]);
+                  })),
+          Divider(height: 1.0),
+          CommentTextField(
+            addComment: (message) =>
+                AppStateContainer.of(context).sendMessage(friendId, message),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+typedef void AddComment(String comment);
+
+class CommentTextField extends StatefulWidget {
+  final AddComment addComment;
+
+  const CommentTextField({Key key, this.addComment}) : super(key: key);
 
   @override
-  initState() {
+  CommentTextFieldState createState() {
+    return new CommentTextFieldState();
+  }
+}
+
+class CommentTextFieldState extends State<CommentTextField> {
+  final TextEditingController _textController = new TextEditingController();
+  FocusNode _focusNode;
+  bool _isComposing = false;
+
+  @override
+  void initState() {
     super.initState();
-    initPlatformState();
+    _focusNode = FocusNode();
   }
 
-  // Platform messages are asynchronous, so we initialize in an async method.
-  initPlatformState() async {
-    bool connectionStatus;
-    // Platform messages may fail, so we use a try/catch PlatformException.
-    try {
-      connectionStatus = await _flores.connectTo(widget.neighbor);
-    } on PlatformException {
-      print('Failed connecting to neighbor');
-    }
-
-    // If the widget was removed from the tree while the asynchronous platform
-    // message was in flight, we want to discard the reply rather than calling
-    // setState to update our non-existent appearance.
-    if (!mounted) return;
-
-    setState(() {
-      _connectionStatus = connectionStatus;
-    });
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return new Scaffold(
-        appBar: new AppBar(title: new Text(widget.neighbor)),
-        body: new Text(_connectionStatus.toString()));
+    return Row(children: <Widget>[
+      Flexible(
+        child: new TextField(
+          maxLength: null,
+          keyboardType: TextInputType.multiline,
+          controller: _textController,
+          focusNode: _focusNode,
+          onChanged: (String text) {
+            setState(() {
+              _isComposing = text.trim().isNotEmpty;
+            });
+          },
+          onSubmitted: (String text) => _handleSubmitted(context, text, false),
+          decoration: new InputDecoration.collapsed(hintText: 'Send message'),
+        ),
+      ),
+      Container(
+          margin: new EdgeInsets.symmetric(horizontal: 4.0),
+          child: IconButton(
+            icon: new Icon(Icons.send),
+            onPressed: _isComposing
+                ? () => _handleSubmitted(context, _textController.text, false)
+                : null,
+          )),
+      Container(
+          margin: new EdgeInsets.symmetric(horizontal: 4.0),
+          child: IconButton(
+            icon: new Icon(Icons.airplanemode_active),
+            onPressed: _isComposing
+                ? () => _handleSubmitted(context, _textController.text, true)
+                : null,
+          )),
+    ]);
+  }
+
+  Future<Null> _handleSubmitted(
+      BuildContext context, String text, bool isHuge) async {
+    _textController.clear();
+    setState(() {
+      _isComposing = false;
+    });
+    if (isHuge) {
+      List x = [];
+      for (int i = 0; i < 1000; i++) x.add(text);
+      text = '!@!@!@!@${x.join()}';
+    }
+    widget.addComment(text);
+    _focusNode.unfocus();
   }
 }

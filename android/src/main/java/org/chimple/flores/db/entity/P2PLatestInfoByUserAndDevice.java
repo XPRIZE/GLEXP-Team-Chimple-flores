@@ -10,7 +10,33 @@ public class P2PLatestInfoByUserAndDevice {
     @ColumnInfo(name = "device_id")
     public String deviceId;
 
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
+    }
+
+    public Long getSequence() {
+        return sequence;
+    }
+
+    public void setSequence(Long sequence) {
+        this.sequence = sequence;
+    }
+
     @ColumnInfo(name = "sequence")
     public Long sequence;
+
+
 
 }
